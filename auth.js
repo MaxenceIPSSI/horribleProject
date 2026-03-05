@@ -1,51 +1,52 @@
-// auth.js — authentication routes (intentionally insecure)
 const express = require('express');
 const jwt     = require('jsonwebtoken');
 const crypto  = require('crypto');
 const router  = express.Router();
 
-// ─── A04 : Hardcoded secret ───────────────────────────────────────────────────
-const SECRET = 'supersecret123';
-const DB_PASSWORD = 'admin1234';
-const API_KEY = 'sk-hardcoded-api-key-do-not-use';
+// ─── A04 : Secrets from environment variables ─────────────────────────────────
+const SECRET = process.env.JWT_SECRET || '';
+const DB_PASSWORD = process.env.DB_PASSWORD || '';
+const API_KEY = process.env.API_KEY || '';
 
-// ─── A07 : JWT signé avec algo "none" ────────────────────────────────────────
+// ─── A07 : JWT signed with secure algorithm ──────────────────────────────────
 router.post('/login', (req, res) => {
   const { username, password } = req.body;
   // No real auth check — always succeeds
-  const token = jwt.sign({ username, role: 'admin' }, SECRET, { algorithm: 'none' });
+  const token = jwt.sign({ username, role: 'admin' }, SECRET, { algorithm: 'HS256' });
   res.json({ token });
 });
 
-// ─── A07 : JWT vérifié sans vérifier l'algo (permet algo=none bypass) ─────────
+// ─── A07 : JWT verified with algorithm check ──────────────────────────────────
 router.get('/profile', (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
-  const decoded = jwt.decode(token); // decode only, no verify
+  const decoded = jwt.verify(token, SECRET, { algorithms: ['HS256'] });
   res.json(decoded);
 });
 
-// ─── A04 : MD5 utilisé pour hasher un mot de passe ───────────────────────────
+// ─── A04 : PBKDF2 used for password hashing ──────────────────────────────────
 router.post('/register', (req, res) => {
   const { username, password } = req.body;
-  const hash = crypto.createHash('md5').update(password).digest('hex');
-  res.json({ username, passwordHash: hash });
+  const salt = crypto.randomBytes(16);
+  const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha256');
+  res.json({ username, passwordHash: hash.toString('hex'), salt: salt.toString('hex') });
 });
 
-// ─── A04 : DES encryption (weak cipher) ──────────────────────────────────────
+// ─── A04 : AES-256-GCM encryption (strong cipher) ────────────────────────────
 router.post('/encrypt', (req, res) => {
   const data = req.body.data;
-  const key  = Buffer.from('12345678');
-  const iv   = Buffer.alloc(8, 0);
-  const cipher = crypto.createCipheriv('des', key, iv);
+  const key  = crypto.scryptSync(process.env.ENCRYPTION_KEY || 'default-key', 'salt', 32);
+  const iv   = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
   let encrypted = cipher.update(data, 'utf8', 'hex');
   encrypted += cipher.final('hex');
-  res.json({ encrypted });
+  const authTag = cipher.getAuthTag();
+  res.json({ encrypted, iv: iv.toString('hex'), authTag: authTag.toString('hex') });
 });
 
-// ─── A09 : Logging de données sensibles ──────────────────────────────────────
+// ─── A09 : No logging of sensitive data ──────────────────────────────────────
 router.post('/reset-password', (req, res) => {
   const { email, password } = req.body;
-  console.log(`Password reset for ${email}: new password = ${password}`);
+  console.log(`Password reset initiated for ${email}`);
   res.json({ success: true });
 });
 
