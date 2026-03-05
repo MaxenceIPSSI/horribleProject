@@ -1,0 +1,14 @@
+{
+  "env": { "node": true, "es2021": true },
+  "plugins": ["security"],
+  "extends": ["plugin:security/recommended"],
+  "rules": {
+    "no-eval": "error",
+    "security/detect-child-process": "warn",
+    "security/detect-non-literal-fs-filename": "warn",
+    "security/detect-non-literal-regexp": "warn",
+    "security/detect-object-injection": "warn",
+    "security/detect-possible-timing-attacks": "warn",
+    "security/detect-unsafe-regex": "error"
+  }
+}
