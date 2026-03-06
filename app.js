@@ -1,6 +1,6 @@
 // HorribleProject - intentionally insecure Express app
 const express = require('express');
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 const fs      = require('fs');
 const path    = require('path');
 const auth    = require('./auth');
@@ -14,22 +14,30 @@ app.use(express.urlencoded({ extended: true }));
 // User input passed directly to shell command
 app.post('/ping', (req, res) => {
   const host = req.body.host;
-  exec('ping -c 1 ' + host, (err, stdout) => {
+  execFile('ping', ['-c', '1', host], (err, stdout) => {
     res.send(stdout || err.message);
   });
 });
 
 // ─── A05 : eval() with user input ────────────────────────────────────────────
 app.post('/calc', (req, res) => {
-  const expr = req.body.expression;
-  const result = eval(expr);
+  let result;
+  try {
+    result = JSON.parse(req.body.expression);
+  } catch (e) {
+    return res.status(400).json({ error: 'Invalid expression' });
+  }
   res.json({ result });
 });
 
 // ─── A01 : Path traversal — arbitrary file read ──────────────────────────────
 app.get('/file', (req, res) => {
   const filename = req.query.name;
-  const filePath = path.join('/var/www/uploads', filename);
+  const baseDir = '/var/www/uploads';
+  const filePath = path.resolve(baseDir, filename);
+  if (!filePath.startsWith(baseDir + path.sep) && filePath !== baseDir) {
+    return res.status(403).send('Access denied');
+  }
   const content = fs.readFileSync(filePath, 'utf-8');
   res.send(content);
 });
@@ -45,27 +53,45 @@ app.get('/list', (req, res) => {
 // ─── A05 : XSS — user input injected into HTML without escaping ──────────────
 app.get('/greet', (req, res) => {
   const name = req.query.name;
-  res.send('<h1>Bonjour ' + name + '</h1>');
+  const safeName = String(name)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+  res.send('<h1>Bonjour ' + safeName + '</h1>');
 });
 
 // ─── A08 : node-serialize deserialization (RCE gadget) ───────────────────────
-const serialize = require('node-serialize');
 app.post('/deserialize', (req, res) => {
-  const obj = serialize.unserialize(req.body.data);
+  let obj;
+  try {
+    obj = JSON.parse(req.body.data);
+  } catch (e) {
+    return res.status(400).json({ error: 'Invalid data' });
+  }
   res.json(obj);
 });
 
 // ─── A06 : Unsafe regex — ReDoS ──────────────────────────────────────────────
 app.post('/validate-email', (req, res) => {
   const email = req.body.email;
-  const re = /^([a-zA-Z0-9_\-\.]+)+@[a-zA-Z0-9]+\.[a-zA-Z]{2,}$/;
+  const re = /^[a-zA-Z0-9_\-.]+@[a-zA-Z0-9]+\.[a-zA-Z]{2,}$/;
   res.json({ valid: re.test(email) });
 });
 
 // ─── A03 : Dynamic require (supply chain) ────────────────────────────────────
+const ALLOWED_PLUGINS = Object.freeze({
+  'plugin-a': require('./plugins/plugin-a'),
+  'plugin-b': require('./plugins/plugin-b'),
+});
+
 app.post('/plugin', (req, res) => {
   const pluginName = req.body.name;
-  const plugin = require(pluginName);
+  const plugin = ALLOWED_PLUGINS[pluginName];
+  if (!plugin) {
+    return res.status(400).json({ error: 'Unknown plugin' });
+  }
   res.json(plugin.run());
 });
 
