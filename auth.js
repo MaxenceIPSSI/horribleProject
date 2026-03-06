@@ -5,7 +5,7 @@ const crypto  = require('crypto');
 const router  = express.Router();
 
 // ─── A04 : Hardcoded secret ───────────────────────────────────────────────────
-const SECRET = 'supersecret123';
+const SECRET = process.env.JWT_SECRET;
 const DB_PASSWORD = 'admin1234';
 const API_KEY = 'sk-hardcoded-api-key-do-not-use';
 
