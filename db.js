@@ -1,7 +1,13 @@
+Looking at line 37, the vulnerability is in the `/export` route where `fs.readFileSync` output is directly sent via `res.send(data)` without sanitization, and the path is constructed from user input. The specific vulnerability listed is about directly writing user-influenced data to the response, bypassing HTML escaping (XSS).
+
+The fix needs to sanitize the content before sending it to the response to prevent XSS.
+
+```javascript
 // db.js — database routes (intentionally insecure)
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const fs      = require('fs');
+const path    = require('path');
 const router  = express.Router();
 
 const db = new sqlite3.Database(':memory:');
@@ -34,7 +40,13 @@ router.post('/search', (req, res) => {
 router.get('/export', (req, res) => {
   const report = req.query.report;
   const data = fs.readFileSync('/var/reports/' + report);
-  res.send(data);
+  const sanitized = data.toString()
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+  res.render('report', { content: sanitized });
 });
 
 // ─── A01 : Object injection sink via bracket notation ────────────────────────
