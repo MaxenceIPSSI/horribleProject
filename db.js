@@ -2,6 +2,7 @@
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const fs      = require('fs');
+const path    = require('path');
 const router  = express.Router();
 
 const db = new sqlite3.Database(':memory:');
@@ -15,8 +16,8 @@ db.serialize(() => {
 // ─── A05 : SQL Injection — concaténation directe dans la query ────────────────
 router.get('/user', (req, res) => {
   const username = req.query.username;
-  const query = "SELECT * FROM users WHERE username = '" + username + "'";
-  db.all(query, (err, rows) => {
+  const query = "SELECT * FROM users WHERE username = ?";
+  db.all(query, [username], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(rows);
   });
@@ -25,7 +26,11 @@ router.get('/user', (req, res) => {
 // ─── A05 : SQL Injection via template literal ─────────────────────────────────
 router.post('/search', (req, res) => {
   const { field, value } = req.body;
-  db.all(`SELECT * FROM users WHERE ${field} = '${value}'`, (err, rows) => {
+  const allowedFields = ['id', 'username', 'email'];
+  if (!allowedFields.includes(field)) {
+    return res.status(400).json({ error: 'Invalid field' });
+  }
+  db.all(`SELECT * FROM users WHERE ${field} = ?`, [value], (err, rows) => {
     res.json(rows || []);
   });
 });
@@ -33,8 +38,14 @@ router.post('/search', (req, res) => {
 // ─── A01 : Path traversal — lecture de fichier arbitraire ────────────────────
 router.get('/export', (req, res) => {
   const report = req.query.report;
-  const data = fs.readFileSync('/var/reports/' + report);
-  res.send(data);
+  const baseDir = '/var/reports';
+  const resolvedPath = path.resolve(baseDir, report);
+  if (!resolvedPath.startsWith(baseDir + path.sep) && resolvedPath !== baseDir) {
+    return res.status(400).send('Invalid report path');
+  }
+  const sanitizedReport = path.basename(report);
+  const data = fs.readFileSync(path.join(baseDir, sanitizedReport));
+  res.type('application/octet-stream').send(data);
 });
 
 // ─── A01 : Object injection sink via bracket notation ────────────────────────
