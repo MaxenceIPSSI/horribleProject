@@ -1,6 +1,6 @@
 // HorribleProject - intentionally insecure Express app
 const express = require('express');
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 const fs      = require('fs');
 const path    = require('path');
 const auth    = require('./auth');
@@ -14,7 +14,7 @@ app.use(express.urlencoded({ extended: true }));
 // User input passed directly to shell command
 app.post('/ping', (req, res) => {
   const host = req.body.host;
-  exec('ping -c 1 ' + host, (err, stdout) => {
+  execFile('ping', ['-c', '1', host], (err, stdout) => {
     res.send(stdout || err.message);
   });
 });
@@ -22,7 +22,7 @@ app.post('/ping', (req, res) => {
 // ─── A05 : eval() with user input ────────────────────────────────────────────
 app.post('/calc', (req, res) => {
   const expr = req.body.expression;
-  const result = eval(expr);
+  const result = JSON.parse(expr);
   res.json({ result });
 });
 
@@ -58,7 +58,7 @@ app.post('/deserialize', (req, res) => {
 // ─── A06 : Unsafe regex — ReDoS ──────────────────────────────────────────────
 app.post('/validate-email', (req, res) => {
   const email = req.body.email;
-  const re = /^([a-zA-Z0-9_\-\.]+)+@[a-zA-Z0-9]+\.[a-zA-Z]{2,}$/;
+  const re = /^[a-zA-Z0-9_\-\.]+@[a-zA-Z0-9]+\.[a-zA-Z]{2,}$/;
   res.json({ valid: re.test(email) });
 });
 
